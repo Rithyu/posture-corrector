@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Posture Control Center</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; padding: 2rem; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+        .card { background: #1e293b; padding: 1.5rem; border-radius: 12px; border: 1px solid #334155; text-align: center; }
+        button { background: #3b82f6; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 1rem; }
+        button:hover { background: #2563eb; }
+        .status { font-size: 2rem; font-weight: bold; text-align: center; padding: 2rem; border-radius: 12px; transition: all 0.3s; }
+        
+        /* State Colors */
+        .state-text { font-size: 1.5rem; font-weight: bold; color: #cbd5e1; }
+        .good { background: #065f46; color: #34d399; border: 2px solid #10b981; }
+        .slouch { background: #7f1d1d; color: #fca5a5; border: 2px solid #ef4444; animation: pulse 1.5s infinite; }
+        .neutral { background: #1e293b; color: #94a3b8; border: 2px solid #334155; }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <h1 style="text-align: center; margin-bottom: 2rem;">AI Posture Dashboard</h1>
+    
+    <div class="grid">
+        <div class="card">
+            <h2>Cervical Node (Neck)</h2>
+            <button onclick="connectNode('XIAO-NECK', 'neck-val')">Connect Neck AI</button>
+            <p>Current State:</p>
+            <div id="neck-val" class="state-text">Offline</div>
+        </div>
+        <div class="card">
+            <h2>Thoracic Node (Back)</h2>
+            <button onclick="connectNode('XIAO-BACK', 'back-val')">Connect Back AI</button>
+            <p>Current State:</p>
+            <div id="back-val" class="state-text">Offline</div>
+        </div>
+    </div>
+
+    <div id="overall-status" class="status neutral">SYSTEM READY - CONNECT NEURAL NODES</div>
+
+    <script>
+        // Adjust these arrays based on the alphabetical order of your Edge Impulse labels!
+        // E.g. "Sitting", "Slouching", "Standing" -> Index 0, 1, 2
+        const labels = ["Sitting", "Slouching", "Standing"];
+        
+        let neckState = "Offline";
+        let backState = "Offline";
+
+        async function connectNode(deviceName, elementId) {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: deviceName }],
+                    optionalServices: [0x181A]
+                });
+                
+                document.getElementById(elementId).innerText = "Connecting...";
+                
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService(0x181A);
+                const characteristic = await service.getCharacteristic(0x2A56);
+                
+                document.getElementById(elementId).innerText = "Calibrating...";
+                
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                    // Read the single uint8 byte (0, 1, or 2)
+                    const stateIndex = event.target.value.getUint8(0); 
+                    const stateName = labels[stateIndex];
+                    
+                    document.getElementById(elementId).innerText = stateName;
+                    
+                    if(deviceName === 'XIAO-NECK') neckState = stateName;
+                    if(deviceName === 'XIAO-BACK') backState = stateName;
+                    
+                    evaluateSystem();
+                });
+            } catch (error) {
+                console.error("BLE Error: ", error);
+                document.getElementById(elementId).innerText = "Connection Failed";
+            }
+        }
+
+        function evaluateSystem() {
+            const statusBox = document.getElementById('overall-status');
+            
+            // If either AI detects slouching, trigger the overall system alarm
+            if (neckState === "Slouching" || backState === "Slouching") {
+                statusBox.innerText = "⚠️ ACUTE POSTURAL STRAIN DETECTED ⚠️";
+                statusBox.className = "status slouch";
+            } 
+            else if (neckState !== "Offline" && backState !== "Offline") {
+                statusBox.innerText = "✅ ALIGNMENT OPTIMAL";
+                statusBox.className = "status good";
+            }
+        }
+    </script>
+</body>
+</html>
